@@ -62,6 +62,21 @@
 #define SWO_Pin GPIO_PIN_3
 #define SWO_GPIO_Port GPIOB
 
+/* Custom pin definitions */
+// I2C1 default pins on Nucleo F411RE (D15/D14)
+#define I2C_SCL_Pin GPIO_PIN_8   /* PB8 - SCL (D15) */
+#define I2C_SCL_GPIO_Port GPIOB
+#define I2C_SDA_Pin GPIO_PIN_9   /* PB9 - SDA (D14) */
+#define I2C_SDA_GPIO_Port GPIOB
+#define BUTTON1_Pin GPIO_PIN_9   /* D7 on Nucleo F411RE */
+#define BUTTON1_GPIO_Port GPIOC
+#define BUTTON2_Pin GPIO_PIN_8   /* D8 on Nucleo F411RE */
+#define BUTTON2_GPIO_Port GPIOC
+#define POT_Pin GPIO_PIN_1       /* A1 on Nucleo F411RE */
+#define POT_GPIO_Port GPIOA
+#define MIC_Pin GPIO_PIN_4       /* A4 on Nucleo F411RE */
+#define MIC_GPIO_Port GPIOA
+
 /* ########################## Assert Selection ############################## */
 /**
   * @brief Uncomment the line below to expanse the "assert_param" macro in the 

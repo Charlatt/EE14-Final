@@ -1,352 +1,335 @@
-/* Includes ------------------------------------------------------------------*/
-#include "main.h"
-#include "stm32f4xx_hal.h"
-
-/* USER CODE BEGIN Includes */
-
-/* USER CODE END Includes */
-
-/* Private variables ---------------------------------------------------------*/
-I2C_HandleTypeDef hi2c1;
-
-UART_HandleTypeDef huart2;
-
-/* USER CODE BEGIN PV */
-/* Private variables ---------------------------------------------------------*/
-
-/* USER CODE END PV */
-
-/* Private function prototypes -----------------------------------------------*/
-void SystemClock_Config(void);
-static void MX_GPIO_Init(void);
-static void MX_I2C1_Init(void);
-static void MX_USART2_UART_Init(void);
-
-/* USER CODE BEGIN PFP */
-/* Private function prototypes -----------------------------------------------*/
-
-/* USER CODE END PFP */
-
-/* USER CODE BEGIN 0 */
+/*
+ * Basic CMSIS example for Nucleo-L432KC
+ * Blinks the onboard LED (PB3)
+ */
+#include "stm32l432xx.h"
+#include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
-#define LCD_ADDR (0x27 << 1)
+// LCD I2C Address (7-bit << 1). For PCF8574 modules this is typically 0x27.
+#define LCD_ADDR (0x27 << 1) // Confirmed by scanner
 
-#define PIN_RS    (1 << 0)
-#define PIN_EN    (1 << 2)
-#define BACKLIGHT (1 << 3)
+// Simple delay function globals
+volatile uint32_t ticks = 0;
 
-#define LCD_DELAY_MS 5
-
-void I2C_Scan() {
-    char info[] = "Scanning I2C bus...\r\n";
-    HAL_UART_Transmit(&huart2, (uint8_t*)info, strlen(info), HAL_MAX_DELAY);
-
-    HAL_StatusTypeDef res;
-    for(uint16_t i = 0; i < 128; i++) {
-        res = HAL_I2C_IsDeviceReady(&hi2c1, i << 1, 1, 10);
-        if(res == HAL_OK) {
-            char msg[64];
-            snprintf(msg, sizeof(msg), "0x%02X", i);
-            HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
-        } else {
-            HAL_UART_Transmit(&huart2, (uint8_t*)".", 1, HAL_MAX_DELAY);
-        }
-    }
-
-    HAL_UART_Transmit(&huart2, (uint8_t*)"\r\n", 2, HAL_MAX_DELAY);
-}
-
-HAL_StatusTypeDef LCD_SendInternal(uint8_t lcd_addr, uint8_t data, uint8_t flags) {
-    HAL_StatusTypeDef res;
-    for(;;) {
-        res = HAL_I2C_IsDeviceReady(&hi2c1, lcd_addr, 1, HAL_MAX_DELAY);
-        if(res == HAL_OK)
-            break;
-    }
-
-    uint8_t up = data & 0xF0;
-    uint8_t lo = (data << 4) & 0xF0;
-
-    uint8_t data_arr[4];
-    data_arr[0] = up|flags|BACKLIGHT|PIN_EN;
-    data_arr[1] = up|flags|BACKLIGHT;
-    data_arr[2] = lo|flags|BACKLIGHT|PIN_EN;
-    data_arr[3] = lo|flags|BACKLIGHT;
-
-    res = HAL_I2C_Master_Transmit(&hi2c1, lcd_addr, data_arr, sizeof(data_arr), HAL_MAX_DELAY);
-    HAL_Delay(LCD_DELAY_MS);
-    return res;
-}
-
-void LCD_SendCommand(uint8_t lcd_addr, uint8_t cmd) {
-    LCD_SendInternal(lcd_addr, cmd, 0);
-}
-
-void LCD_SendData(uint8_t lcd_addr, uint8_t data) {
-    LCD_SendInternal(lcd_addr, data, PIN_RS);
-}
-
-void LCD_Init(uint8_t lcd_addr) {
-    // 4-bit mode, 2 lines, 5x7 format
-    LCD_SendCommand(lcd_addr, 0b00110000);
-    // display & cursor home (keep this!)
-    LCD_SendCommand(lcd_addr, 0b00000010);
-    // display on, right shift, underline off, blink off
-    LCD_SendCommand(lcd_addr, 0b00001100);
-    // clear display (optional here)
-    LCD_SendCommand(lcd_addr, 0b00000001);
-}
-
-void LCD_SendString(uint8_t lcd_addr, char *str) {
-    while(*str) {
-        LCD_SendData(lcd_addr, (uint8_t)(*str));
-        str++;
-    }
-}
-
-void init() {
-    I2C_Scan();
-    LCD_Init(LCD_ADDR);
-
-    // set address to 0x00
-    LCD_SendCommand(LCD_ADDR, 0b10000000);
-    LCD_SendString(LCD_ADDR, " Using 1602 LCD");
-
-    // set address to 0x40
-    LCD_SendCommand(LCD_ADDR, 0b11000000);
-    LCD_SendString(LCD_ADDR, "  over I2C bus");
-}
-
-void loop() {
-    HAL_Delay(100);
-}
-
-/* USER CODE END 0 */
+// Function Prototypes
+void SystemClock_Config(void);
+void GPIO_Init(void);
+void ADC1_Init(void);
+void I2C1_Init(void);
+void delay_ms(uint32_t ms);
+void I2C1_Write(uint8_t slave_addr, uint8_t *data, uint32_t size);
+void LCD_SendCommand(uint8_t cmd);
+void LCD_SendData(uint8_t data);
+void LCD_Init(void);
+void LCD_SendString(char *str);
+void LCD_Clear(void);
+void LCD_SetCursor(uint8_t row, uint8_t col);
 
 int main(void)
 {
-
-  /* USER CODE BEGIN 1 */
-
-  /* USER CODE END 1 */
-
-  /* MCU Configuration----------------------------------------------------------*/
-
-  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-  HAL_Init();
-
-  /* USER CODE BEGIN Init */
-
-  /* USER CODE END Init */
-
-  /* Configure the system clock */
+  // Configure System Clock
   SystemClock_Config();
 
-  /* USER CODE BEGIN SysInit */
+  // Configure SysTick timer for 1ms interrupts
+  SysTick_Config(SystemCoreClock / 1000);
 
-  /* USER CODE END SysInit */
+  // Initialize GPIO including I2C pins
+  GPIO_Init();
 
-  /* Initialize all configured peripherals */
-  MX_GPIO_Init();
-  MX_I2C1_Init();
-  MX_USART2_UART_Init();
+  // Initialize I2C with SLOW timing
+  I2C1_Init();
 
-  /* USER CODE BEGIN 2 */
+  // Initialize LCD
+  LCD_Init(); 
 
-  /* USER CODE END 2 */
+  // Send the desired string
+  LCD_SendString("EE14 Project");
+  // Set cursor position to row 2, column 1
+  LCD_SetCursor(2, 1);
+  // Display 'TEST' at the cursor position
+  LCD_SendData('T');
+  LCD_SendData('E');
+  LCD_SendData('S');
+  LCD_SendData('T');
 
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
-  init();
+  // Blink LED to confirm code finished init and is running
   while (1)
   {
-    loop();
-  /* USER CODE END WHILE */
-
-  /* USER CODE BEGIN 3 */
-
+    // Blink user LED on PB3 (LD3)
+    GPIOB->ODR ^= GPIO_ODR_OD3;
+    delay_ms(500);
   }
-  /* USER CODE END 3 */
-
 }
-
-/** System Clock Configuration
-*/
-void SystemClock_Config(void)
-{
-
-  RCC_OscInitTypeDef RCC_OscInitStruct;
-  RCC_ClkInitTypeDef RCC_ClkInitStruct;
-
-    /**Configure the main internal regulator output voltage 
-    */
-  __HAL_RCC_PWR_CLK_ENABLE();
-
-  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
-
-    /**Initializes the CPU, AHB and APB busses clocks 
-    */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
-  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-  RCC_OscInitStruct.HSICalibrationValue = 16;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
-  RCC_OscInitStruct.PLL.PLLM = 16;
-  RCC_OscInitStruct.PLL.PLLN = 336;
-  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV4;
-  RCC_OscInitStruct.PLL.PLLQ = 4;
-  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
-  {
-    _Error_Handler(__FILE__, __LINE__);
-  }
-
-    /**Initializes the CPU, AHB and APB busses clocks 
-    */
-  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
-                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
-  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
-  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
-
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
-  {
-    _Error_Handler(__FILE__, __LINE__);
-  }
-
-    /**Configure the Systick interrupt time 
-    */
-  HAL_SYSTICK_Config(HAL_RCC_GetHCLKFreq()/1000);
-
-    /**Configure the Systick 
-    */
-  HAL_SYSTICK_CLKSourceConfig(SYSTICK_CLKSOURCE_HCLK);
-
-  /* SysTick_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(SysTick_IRQn, 0, 0);
-}
-
-/* I2C1 init function */
-static void MX_I2C1_Init(void)
-{
-
-  hi2c1.Instance = I2C1;
-  hi2c1.Init.ClockSpeed = 100000;
-  hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
-  hi2c1.Init.OwnAddress1 = 0;
-  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
-  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
-  hi2c1.Init.OwnAddress2 = 0;
-  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
-  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
-  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
-  {
-    _Error_Handler(__FILE__, __LINE__);
-  }
-
-}
-
-/* USART2 init function */
-static void MX_USART2_UART_Init(void)
-{
-
-  huart2.Instance = USART2;
-  huart2.Init.BaudRate = 9600;
-  huart2.Init.WordLength = UART_WORDLENGTH_8B;
-  huart2.Init.StopBits = UART_STOPBITS_1;
-  huart2.Init.Parity = UART_PARITY_NONE;
-  huart2.Init.Mode = UART_MODE_TX_RX;
-  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
-  if (HAL_UART_Init(&huart2) != HAL_OK)
-  {
-    _Error_Handler(__FILE__, __LINE__);
-  }
-
-}
-
-/** Configure pins as 
-        * Analog 
-        * Input 
-        * Output
-        * EVENT_OUT
-        * EXTI
-*/
-static void MX_GPIO_Init(void)
-{
-
-  GPIO_InitTypeDef GPIO_InitStruct;
-
-  /* GPIO Ports Clock Enable */
-  __HAL_RCC_GPIOC_CLK_ENABLE();
-  __HAL_RCC_GPIOH_CLK_ENABLE();
-  __HAL_RCC_GPIOA_CLK_ENABLE();
-  __HAL_RCC_GPIOB_CLK_ENABLE();
-
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
-
-  /*Configure GPIO pin : B1_Pin */
-  GPIO_InitStruct.Pin = B1_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : LD2_Pin */
-  GPIO_InitStruct.Pin = LD2_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
-
-}
-
-/* USER CODE BEGIN 4 */
-
-/* USER CODE END 4 */
 
 /**
-  * @brief  This function is executed in case of error occurrence.
-  * @param  None
-  * @retval None
+  * @brief System Clock Configuration
+  * Configures the system clock to run from the MSI (4MHz default)
+  */
+void SystemClock_Config(void)
+{
+  // Enable MSI oscillator
+  RCC->CR |= RCC_CR_MSION;
+  // Wait until MSI is ready
+  while (!(RCC->CR & RCC_CR_MSIRDY));
+
+  // Select MSI as system clock source
+  RCC->CFGR &= ~RCC_CFGR_SW;
+  RCC->CFGR |= RCC_CFGR_SW_MSI;
+  // Wait until MSI is used as system clock source
+  while ((RCC->CFGR & RCC_CFGR_SWS) != RCC_CFGR_SWS_MSI);
+
+  // Update SystemCoreClock variable (optional but good practice)
+  SystemCoreClockUpdate();
+}
+
+/**
+  * @brief GPIO Initialization Function
+  * Configures the onboard LED pin (PB3) as output push-pull
+  */
+void GPIO_Init(void)
+{
+  // Enable GPIOA and GPIOB Clocks
+  RCC->AHB2ENR |= RCC_AHB2ENR_GPIOAEN | RCC_AHB2ENR_GPIOBEN;
+
+  // Configure PB3 (User LED LD3)
+  GPIOB->MODER &= ~GPIO_MODER_MODE3;
+  GPIOB->MODER |= GPIO_MODER_MODE3_0;
+  GPIOB->OTYPER &= ~GPIO_OTYPER_OT3;
+  GPIOB->OSPEEDR &= ~GPIO_OSPEEDR_OSPEED3;
+  GPIOB->PUPDR &= ~GPIO_PUPDR_PUPD3;
+
+  // Keep Analog configs commented out unless needed
+  // // Configure PA1 (Potentiometer A1) - Analog ...
+  // // Configure PA3 (Potentiometer A2) - Analog ...
+
+  // Configure PB7 (I2C1_SDA / D11) and PB6 (I2C1_SCL / D12)
+  GPIOB->MODER &= ~(GPIO_MODER_MODE6 | GPIO_MODER_MODE7);
+  GPIOB->MODER |= (GPIO_MODER_MODE6_1 | GPIO_MODER_MODE7_1);
+  GPIOB->AFR[0] &= ~(GPIO_AFRL_AFSEL6 | GPIO_AFRL_AFSEL7);
+  GPIOB->AFR[0] |= (4 << GPIO_AFRL_AFSEL6_Pos) | (4 << GPIO_AFRL_AFSEL7_Pos);
+  GPIOB->OTYPER |= (GPIO_OTYPER_OT6 | GPIO_OTYPER_OT7);
+  GPIOB->OSPEEDR |= (GPIO_OSPEEDR_OSPEED6 | GPIO_OSPEEDR_OSPEED7);
+  GPIOB->PUPDR &= ~(GPIO_PUPDR_PUPD6 | GPIO_PUPDR_PUPD7);
+  GPIOB->PUPDR |= (GPIO_PUPDR_PUPD6_0 | GPIO_PUPDR_PUPD7_0);
+}
+
+/**
+  * @brief SysTick Interrupt Handler
+  * Increments the ticks counter every 1ms.
+  */
+void SysTick_Handler(void)
+{
+  ticks++;
+}
+
+/**
+  * @brief Simple Blocking Delay Function
+  * @param ms: Delay time in milliseconds
+  */
+void delay_ms(uint32_t ms)
+{
+  uint32_t start_ticks = ticks;
+  while ((ticks - start_ticks) < ms);
+}
+
+/**
+  * @brief Error Handler Function (required by some CMSIS parts potentially)
   */
 void _Error_Handler(char * file, int line)
 {
-  /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
-  while(1) 
-  {
-  }
-  /* USER CODE END Error_Handler_Debug */ 
+  // Simple error handler: Infinite loop
+  while(1) {}
 }
 
-#ifdef USE_FULL_ASSERT
-
 /**
-   * @brief Reports the name of the source file and the source line number
-   * where the assert_param error has occurred.
-   * @param file: pointer to the source file name
-   * @param line: assert_param error line source number
-   * @retval None
-   */
+  * @brief Assert Failed Function (required by some CMSIS parts potentially)
+  */
+#ifdef USE_FULL_ASSERT
 void assert_failed(uint8_t* file, uint32_t line)
 {
-  /* USER CODE BEGIN 6 */
   /* User can add his own implementation to report the file name and line number,
-    ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
-  /* USER CODE END 6 */
+     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+  /* Infinite loop */
+  while (1)
+  {
+  }
+}
+#endif /* USE_FULL_ASSERT */
 
+/**
+ * @brief ADC1 Initialization Function
+ */
+void ADC1_Init(void)
+{
+  // Enable ADC Clock
+  RCC->AHB2ENR |= RCC_AHB2ENR_ADCEN;
+
+  // Disable ADC if already enabled
+  if (ADC1->CR & ADC_CR_ADEN) {
+      ADC1->CR |= ADC_CR_ADDIS;
+      while (ADC1->CR & ADC_CR_ADEN);
+  }
+
+  // Enable ADC Voltage Regulator
+  ADC1->CR |= ADC_CR_ADVREGEN; // Enable ADC voltage regulator
+
+  delay_ms(2); // Regulator start-up time
+
+  // Perform ADC Calibration
+  ADC1->CR |= ADC_CR_ADCAL;
+  while (ADC1->CR & ADC_CR_ADCAL);
+
+  // Set prescaler to synchronous clock /2
+  ADC1_COMMON->CCR &= ~ADC_CCR_PRESC;
+  ADC1_COMMON->CCR |= 0x1 << ADC_CCR_PRESC_Pos; // DIV2
+
+  // 12-bit resolution, right alignment, single conversion
+  ADC1->CFGR = 0; // Single conversion, software trigger
+
+  // Sequence: 2 conversions (L = 1) -> SQ1=6 (PA1), SQ2=8 (PA3)
+  ADC1->SQR1 = (1 << ADC_SQR1_L_Pos) | (6 << ADC_SQR1_SQ1_Pos) | (8 << ADC_SQR1_SQ2_Pos);
+
+  // Sampling time for channel 6 and 8 -> 12.5 cycles (010)
+  ADC1->SMPR1 &= ~(ADC_SMPR1_SMP6 | ADC_SMPR1_SMP8);
+  ADC1->SMPR1 |= (0x1 << ADC_SMPR1_SMP6_Pos) | (0x1 << ADC_SMPR1_SMP8_Pos);
+
+  // Enable ADC
+  ADC1->ISR |= ADC_ISR_ADRDY; // Clear ADRDY
+  ADC1->CR |= ADC_CR_ADEN;
+  while (!(ADC1->ISR & ADC_ISR_ADRDY));
 }
 
-#endif
-
 /**
-  * @}
-  */ 
+ * @brief I2C1 Initialization Function
+ * Configures I2C1 for ~10kHz @ 4MHz MSI clock (Very Slow)
+ */
+void I2C1_Init(void)
+{
+  // Enable I2C1 Clock
+  RCC->APB1ENR1 |= RCC_APB1ENR1_I2C1EN;
 
-/**
-  * @}
-*/ 
+  // Disable I2C1 peripheral
+  I2C1->CR1 &= ~I2C_CR1_PE;
+
+  // Configure I2C1 Timing Register for ~10kHz @ 4MHz MSI clock (Very Slow)
+  // PRESC = 3, SCLDEL = 15, SDADEL = 15, SCLH = 25, SCLL = 30 (Approx values)
+  I2C1->TIMINGR = (3 << I2C_TIMINGR_PRESC_Pos) |
+                  (15 << I2C_TIMINGR_SCLDEL_Pos) |
+                  (15 << I2C_TIMINGR_SDADEL_Pos) |
+                  (25 << I2C_TIMINGR_SCLH_Pos)  |
+                  (30 << I2C_TIMINGR_SCLL_Pos);
+
+  // Enable I2C1 peripheral
+  I2C1->CR1 |= I2C_CR1_PE;
+}
+
+// --- I2C Helper Function ---
+void I2C1_WaitTXIS() {
+    while (!(I2C1->ISR & I2C_ISR_TXIS));
+}
+
+void I2C1_WaitTC() {
+    while (!(I2C1->ISR & I2C_ISR_TC));
+}
+
+// Simplified I2C Write function (blocking)
+void I2C1_Write(uint8_t slave_addr, uint8_t *data, uint32_t size) {
+    // Configure slave address and number of bytes
+    I2C1->CR2 = (slave_addr & I2C_CR2_SADD) | ((size << I2C_CR2_NBYTES_Pos) & I2C_CR2_NBYTES) | I2C_CR2_AUTOEND;
+
+    // Set START condition
+    I2C1->CR2 |= I2C_CR2_START;
+
+    for (uint32_t i = 0; i < size; i++) {
+        I2C1_WaitTXIS(); // Wait until TXDR is empty
+        I2C1->TXDR = data[i]; // Send data byte
+    }
+
+    // Wait for Transfer Complete (or NACKF/STOPF implicitly handled by AUTOEND)
+    // For robustness, checking NACKF might be needed.
+    // Note: AUTOEND generates STOP automatically after NBYTES are transferred.
+    while (!(I2C1->ISR & I2C_ISR_STOPF)); // Wait for stop condition
+    I2C1->ICR |= I2C_ICR_STOPCF; // Clear stop flag
+}
+
+// --- LCD Functions (using I2C1_Write) ---
+void LCD_SendCommand(uint8_t cmd) {
+    uint8_t data_t[4];
+    uint8_t up = cmd & 0xF0; // Upper nibble
+    uint8_t lo = (cmd & 0x0F) << 4; // Lower nibble shifted left by 4
+    
+    // Send upper nibble
+    data_t[0] = up | 0x0C; // en=1, rs=0, backlight=1
+    data_t[1] = up | 0x08; // en=0, rs=0, backlight=1
+    I2C1_Write(LCD_ADDR, data_t, 2);
+    delay_ms(2);
+    
+    // Send lower nibble
+    data_t[0] = lo | 0x0C; // en=1, rs=0, backlight=1
+    data_t[1] = lo | 0x08; // en=0, rs=0, backlight=1
+    I2C1_Write(LCD_ADDR, data_t, 2);
+    delay_ms(2);
+}
+
+void LCD_SendData(uint8_t data) {
+    uint8_t data_t[4];
+    uint8_t up = data & 0xF0; // Upper nibble
+    uint8_t lo = (data & 0x0F) << 4; // Lower nibble shifted left by 4
+    
+    // Send upper nibble
+    data_t[0] = up | 0x0D; // en=1, rs=1, backlight=1
+    data_t[1] = up | 0x09; // en=0, rs=1, backlight=1
+    I2C1_Write(LCD_ADDR, data_t, 2);
+    delay_ms(2);
+    
+    // Send lower nibble
+    data_t[0] = lo | 0x0D; // en=1, rs=1, backlight=1
+    data_t[1] = lo | 0x09; // en=0, rs=1, backlight=1
+    I2C1_Write(LCD_ADDR, data_t, 2);
+    delay_ms(2);
+}
+
+void LCD_Init() {
+    delay_ms(50); // Wait for LCD power up
+    
+    // Initialization sequence
+    LCD_SendCommand(0x33); // Initialize
+    delay_ms(5);
+    LCD_SendCommand(0x32); // Initialize
+    delay_ms(5);
+    LCD_SendCommand(0x28); // 4-bit mode, 2 lines, 5x8 dots
+    delay_ms(5);
+    
+    // Configure display
+    LCD_SendCommand(0x0C); // Display on, cursor off, blink off
+    delay_ms(5);
+    LCD_SendCommand(0x01); // Clear display
+    delay_ms(5);
+    LCD_SendCommand(0x06); // Entry mode set: increment, no shift
+    delay_ms(5);
+}
+
+void LCD_SendString(char *str) {
+    while (*str) LCD_SendData(*str++);
+}
+
+void LCD_Clear() {
+    LCD_SendCommand(0x01); // Clear display command
+    delay_ms(2); // Needs > 1.53ms
+}
+
+void LCD_SetCursor(uint8_t row, uint8_t col) {
+    uint8_t address;
+    switch (row) {
+        case 1: address = 0x00; break;
+        case 2: address = 0x40; break;
+        // Add cases for 4-line displays if needed
+        default: address = 0x00;
+    }
+    address += (col - 1);
+    LCD_SendCommand(0x80 | address); // Set DDRAM address command
+}
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/ 
