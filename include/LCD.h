@@ -1,6 +1,6 @@
 /**
   ******************************************************************************
-  * File Name          : main.hpp
+  * File Name          : LCD.h
   * Description        : This file contains the common defines of the application
   ******************************************************************************
   ** This notice applies to any and all portions of this file
@@ -36,14 +36,12 @@
   ******************************************************************************
   */
 /* Define to prevent recursive inclusion -------------------------------------*/
-#ifndef __MAIN_H
-#define __MAIN_H
+#ifndef __LCD_H
+#define __LCD_H
   /* Includes ------------------------------------------------------------------*/
 
 /* Includes ------------------------------------------------------------------*/
-/* USER CODE BEGIN Includes */
-
-/* USER CODE END Includes */
+#include <stdint.h>
 
 /* Private define ------------------------------------------------------------*/
 
@@ -105,6 +103,19 @@ void _Error_Handler(char *, int);
 /**
   * @}
 */ 
+
+// Function Prototypes
+void SystemClock_Config(void);
+void ADC1_Init(void);
+void I2C1_Init(void);
+void delay_ms(uint32_t ms);
+void I2C1_Write(uint8_t slave_addr, uint8_t *data, uint32_t size);
+void LCD_SendCommand(uint8_t cmd);
+void LCD_SendData(uint8_t data);
+void LCD_Init(void);
+void LCD_SendString(char *str);
+void LCD_Clear(void);
+void LCD_SetCursor(uint8_t row, uint8_t col);
 
 #endif /* __MAIN_H */
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/ 
