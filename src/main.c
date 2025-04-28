@@ -8,6 +8,7 @@
 void GPIO_Init(void);
 void adc();
 void pitch_shift_simple(uint16_t *input, uint16_t *output, int length, float pitch_factor);
+void setup_dac(void);
 
 int _write(int file, char *data, int len) {
     serial_write(USART2, data, len);
@@ -43,23 +44,29 @@ int main(void)
   LCD_SendData('T');
   LCD_SendData('4');
 
-  volatile int size = 1024;
+  //volatile int size = 1024;
 
-  uint16_t input_samples[size];
-  uint16_t output_samples[size]; 
-  char buffer[100];
-  char buffer2[100];
+  //uint16_t input_samples[size];
+  //uint16_t output_samples[size]; 
+  //char buffer[100];
+  //char buffer2[100];
+
+    adc_config_single(A1);
+
+    //this can be done with EE14LIB
+
+    gpio_config_mode(A3, ANALOG);
+
+    //GPIOA->MODER |=  (0b11 << (4 * 2)); // Set to analog mode
+
+    gpio_config_pullup(A3, PULL_OFF);
+
+
+    setup_dac();
 while(1){
-  adc(input_samples, size);
 
-  //pitch_shift_simple(input_samples, output_samples, size, 2.0f);  // pitch up
-
-  for(int i = 0; i < size; i++){
-    sprintf(buffer, "%d", output_samples[i]);
-    sprintf(buffer2, "%d\n", input_samples[i]);
-    printf("%s    ", buffer);
-    printf("%s", buffer2);
-  }
+    uint16_t sample = adc_read_single();
+    DAC->DHR12R1 = sample;
 }
 
 
@@ -70,6 +77,15 @@ while(1){
     GPIOB->ODR ^= GPIO_ODR_OD3;
     delay_ms(500);
   }
+}
+
+void setup_dac(void)
+{
+    // Enable DAC clock
+    RCC->APB1ENR1 |= RCC_APB1ENR1_DAC1EN;
+
+    // Enable DAC Channel 1
+    DAC->CR |= DAC_CR_EN1;
 }
 
 void GPIO_Init(void)
@@ -104,37 +120,3 @@ void GPIO_Init(void)
     
 }
 
-void adc(uint16_t input_samples[], volatile int input_samples_size) {
-    // initialize everything
-    host_serial_init();
-    unsigned int output;
-
-    // set all my pins as outputs for the joystick
-    adc_config_single(A1);
-
-    // row of LEDs for the joystick
-    for(int i = 0; i < input_samples_size; i++){
-        //delay_ms(100);
-        input_samples[i] = adc_read_single();
-        //sprintf(buffer, "%d\n", output);
-        //printf("%s", buffer);
-    }
-}
-
-/* Doesn't really work
-void pitch_shift_simple(uint16_t *input, uint16_t *output, int length, float pitch_factor) {
-  for (int i = 0; i < length; i++) {
-      float src_index = i / pitch_factor;  // where in input to grab
-      int index_base = (int)src_index;      // integer part
-      float fraction = src_index - index_base; // decimal part
-
-      if (index_base + 1 < length) {
-          // Simple linear interpolation between two samples
-          output[i] = (1.0f - fraction) * input[index_base] + fraction * input[index_base + 1];
-      } else {
-          // If we're at the very end, just copy the last sample
-          output[i] = input[length - 1];
-      }
-  }
-}
-*/
