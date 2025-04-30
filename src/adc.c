@@ -2,6 +2,7 @@
 #include "ee14lib.h"
 
 
+
 // g_ADC_channel[pin] returns the integer mapping which regular ADC channel is
 // mapped to 'pin' (which should be of type EE14Lib_Pin). We take advantage of
 // enum being equivalent to int. Note that we don't handle the special ADC
@@ -104,7 +105,7 @@ EE14Lib_Err adc_config_single(const EE14Lib_Pin pin)
     //0b00 for 12 bits (original)
     //0b11 for 6 bits
     ADC1->CFGR &= ~ADC_CFGR_RES_Msk;
-    ADC1->CFGR |= 0b11 << ADC_CFGR_RES_Pos;
+    ADC1->CFGR |= 0b00 << ADC_CFGR_RES_Pos;
 
     // Set alignment
     // Leave at 0 (right-aligned), put result in least significant end of register

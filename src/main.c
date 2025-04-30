@@ -6,10 +6,16 @@
 #include "ee14lib.h"
 
 void GPIO_Init(void);
-void adc();
-void pitch_shift_simple(uint16_t *input, uint16_t *output, int length, float pitch_factor);
 void setup_dac(void);
+void timer2_init_for_8khz(void);
+void setup();
 
+
+#define NUM_SAMPLES 16000  // 1 second at 8 kHz
+uint16_t buffer[NUM_SAMPLES];
+
+
+//override printf
 int _write(int file, char *data, int len) {
     serial_write(USART2, data, len);
     return len;
@@ -17,21 +23,8 @@ int _write(int file, char *data, int len) {
 
 int main(void)
 {
-  // Configure System Clock
-  SystemClock_Config();
-
-  // Configure SysTick timer for 1ms interrupts
-  SysTick_Config(SystemCoreClock / 1000);
-
-  // Initialize GPIO including I2C pins
-  GPIO_Init();
-
-  // Initialize I2C with SLOW timing
-  I2C1_Init();
-
-  // Initialize LCD
-  LCD_Init(); 
-
+  
+    setup();
 
   // Send the desired string
   LCD_SendString("EE14 Project");
@@ -42,41 +35,68 @@ int main(void)
   LCD_SendData('E');
   LCD_SendData('S');
   LCD_SendData('T');
-  LCD_SendData('4');
+  LCD_SendData('6');
 
-  //volatile int size = 1024;
+  for (volatile int a = 0; a < 1000000; a++); 
+  
+  //printf("hi!\n");
 
-  //uint16_t input_samples[size];
-  //uint16_t output_samples[size]; 
-  //char buffer[100];
-  //char buffer2[100];
+  //adc_config_single(A0);          // Configure ADC on D12
+  adc_config_single(A1);
+    
+    while(1){
+        //adc_config_single(A0); 
+        //int val = adc_read_single();  // Read value from ADC
+        //printf("Value: %u\n", val);        // Print actual numeric value
+        //printf("loop\n");
+        // --- Sampling phase ---
+        for (int i = 0; i < NUM_SAMPLES; i++) {
+            while (!(TIM2->SR & TIM_SR_UIF));  // wait for timer overflow
+            TIM2->SR &= ~TIM_SR_UIF;           // clear update flag
 
-    adc_config_single(A1);
+            buffer[i] = adc_read_single();     // sample from ADC
+        }
 
-    //this can be done with EE14LIB
+        //printf("done sample\n");
 
-    gpio_config_mode(A3, ANALOG);
+        delay_ms(500);  // Optional delay before playback
 
-    //GPIOA->MODER |=  (0b11 << (4 * 2)); // Set to analog mode
+        // --- Playback phase ---
+        for (int i = 0; i < NUM_SAMPLES; i++) {
+            while (!(TIM2->SR & TIM_SR_UIF));  // wait for timer
+            TIM2->SR &= ~TIM_SR_UIF;           // clear flag
 
-    gpio_config_pullup(A3, PULL_OFF);
-
-
-    setup_dac();
-while(1){
-
-    uint16_t sample = adc_read_single();
-    DAC->DHR12R1 = sample;
+            DAC->DHR12R1 = (buffer[i] / 4);          // play one sample
+        }
 }
 
+}
 
-  // Blink LED to confirm code finished init and is running
-  while (1)
-  {
-    // Blink user LED on PB3 (LD3)
-    GPIOB->ODR ^= GPIO_ODR_OD3;
-    delay_ms(500);
-  }
+void setup() {
+    // Configure System Clock
+    SystemClock_Config();
+
+    // Configure SysTick timer for 1ms interrupts
+    SysTick_Config(SystemCoreClock / 1000);
+
+    // Initialize GPIO including I2C pins
+    GPIO_Init();
+
+    // Initialize I2C with SLOW timing
+    I2C1_Init();
+
+    // Initialize LCD
+    LCD_Init(); 
+
+    host_serial_init();
+
+    setup_dac();
+
+    timer2_init_for_8khz();
+
+    
+
+
 }
 
 void setup_dac(void)
@@ -88,15 +108,26 @@ void setup_dac(void)
     DAC->CR |= DAC_CR_EN1;
 }
 
+void timer2_init_for_8khz(void) {
+    RCC->APB1ENR1 |= RCC_APB1ENR1_TIM2EN;  // Enable TIM2 clock
+
+    // Calculate the prescaler and ARR based on the actual system clock
+    // Assuming SystemCoreClock holds the current system clock (updated via SystemCoreClockUpdate())
+    
+    uint32_t sysclk = SystemCoreClock; // This will give the current system clock frequency
+    uint32_t prescaler = sysclk / 1000000 - 1;  // Convert to 1 MHz timer
+    uint32_t arr = 124; // For 8 kHz, we need 125 µs per cycle, so ARR = 124
+
+    TIM2->PSC = prescaler;    // Set prescaler
+    TIM2->ARR = arr;          // Set auto-reload value
+
+    TIM2->CNT = 0;            // Reset counter
+    TIM2->SR = 0;             // Clear status register
+    TIM2->CR1 = TIM_CR1_CEN;  // Enable the timer
+}
+
 void GPIO_Init(void)
 {
-    /* 
-    // Configure PB3 (User LED LD3)
-    gpio_config_mode(D13, OUTPUT); // D13 = PB3
-    gpio_config_otype(D13, PUSH_PULL); // push-pull
-    gpio_config_ospeed(D13, LOW_SPD); // low speed
-    gpio_config_pullup(D13, PULL_OFF); // no pull-up/pull-down
-    */
 
     // Configure PB6 (I2C1_SCL) and PB7 (I2C1_SDA)
     gpio_config_mode(D5, ALTERNATE_FUNCTION); // D5 = PB6
@@ -114,8 +145,9 @@ void GPIO_Init(void)
     gpio_config_pullup(D5, PULL_UP); // pull-up enabled
     gpio_config_pullup(D4, PULL_UP);
     
-    // configure the microphone
-    //gpio_config_mode(A1, INPUT);
+    //DAC out
+    gpio_config_mode(A3, ANALOG);
+    gpio_config_pullup(A3, PULL_OFF);
     
     
 }
